@@ -12,8 +12,6 @@
 
 "use strict";
 var dynamicFeatureFlags = require("ReactFeatureFlags"),
-  disableDefaultPropsExceptForClasses =
-    dynamicFeatureFlags.disableDefaultPropsExceptForClasses,
   enableTransitionTracing = dynamicFeatureFlags.enableTransitionTracing,
   renameElementSymbol = dynamicFeatureFlags.renameElementSymbol,
   enableViewTransition = dynamicFeatureFlags.enableViewTransition,
@@ -92,13 +90,13 @@ var isArrayImpl = Array.isArray;
 function noop() {}
 var ReactSharedInternals = { H: null, A: null, T: null, S: null },
   hasOwnProperty = Object.prototype.hasOwnProperty;
-function ReactElement(type, key, self, source, owner, props) {
-  self = props.ref;
+function ReactElement(type, key, props) {
+  var refProp = props.ref;
   return {
     $$typeof: REACT_ELEMENT_TYPE,
     type: type,
     key: key,
-    ref: void 0 !== self ? self : null,
+    ref: void 0 !== refProp ? refProp : null,
     props: props
   };
 }
@@ -111,23 +109,10 @@ function jsxProd(type, config, maybeKey) {
     for (var propName in config)
       "key" !== propName && (maybeKey[propName] = config[propName]);
   } else maybeKey = config;
-  if (!disableDefaultPropsExceptForClasses && type && type.defaultProps) {
-    config = type.defaultProps;
-    for (var propName$0 in config)
-      void 0 === maybeKey[propName$0] &&
-        (maybeKey[propName$0] = config[propName$0]);
-  }
-  return ReactElement(type, key, void 0, void 0, null, maybeKey);
+  return ReactElement(type, key, maybeKey);
 }
 function cloneAndReplaceKey(oldElement, newKey) {
-  return ReactElement(
-    oldElement.type,
-    newKey,
-    void 0,
-    void 0,
-    void 0,
-    oldElement.props
-  );
+  return ReactElement(oldElement.type, newKey, oldElement.props);
 }
 function isValidElement(object) {
   return (
@@ -323,6 +308,9 @@ function lazyInitializer(payload) {
 function useMemoCache(size) {
   return ReactSharedInternals.H.useMemoCache(size);
 }
+function useEffectEvent(callback) {
+  return ReactSharedInternals.H.useEffectEvent(callback);
+}
 var reportGlobalError =
   "function" === typeof reportError
     ? reportError
@@ -392,52 +380,56 @@ function addTransitionType(type) {
     } else startTransition(addTransitionType.bind(null, type));
   }
 }
-var ReactCompilerRuntime = { __proto__: null, c: useMemoCache };
-exports.Children = {
-  map: mapChildren,
-  forEach: function (children, forEachFunc, forEachContext) {
-    mapChildren(
-      children,
-      function () {
-        forEachFunc.apply(this, arguments);
-      },
-      forEachContext
-    );
-  },
-  count: function (children) {
-    var n = 0;
-    mapChildren(children, function () {
-      n++;
-    });
-    return n;
-  },
-  toArray: function (children) {
-    return (
-      mapChildren(children, function (child) {
-        return child;
-      }) || []
-    );
-  },
-  only: function (children) {
-    if (!isValidElement(children))
-      throw Error(
-        "React.Children.only expected to receive a single React element child."
+var ReactCompilerRuntime = { __proto__: null, c: useMemoCache },
+  Children = {
+    map: mapChildren,
+    forEach: function (children, forEachFunc, forEachContext) {
+      mapChildren(
+        children,
+        function () {
+          forEachFunc.apply(this, arguments);
+        },
+        forEachContext
       );
-    return children;
-  }
-};
+    },
+    count: function (children) {
+      var n = 0;
+      mapChildren(children, function () {
+        n++;
+      });
+      return n;
+    },
+    toArray: function (children) {
+      return (
+        mapChildren(children, function (child) {
+          return child;
+        }) || []
+      );
+    },
+    only: function (children) {
+      if (!isValidElement(children))
+        throw Error(
+          "React.Children.only expected to receive a single React element child."
+        );
+      return children;
+    }
+  };
+exports.Activity = REACT_ACTIVITY_TYPE;
+exports.Children = Children;
 exports.Component = Component;
 exports.Fragment = REACT_FRAGMENT_TYPE;
 exports.Profiler = REACT_PROFILER_TYPE;
 exports.PureComponent = PureComponent;
 exports.StrictMode = REACT_STRICT_MODE_TYPE;
 exports.Suspense = REACT_SUSPENSE_TYPE;
+exports.ViewTransition = REACT_VIEW_TRANSITION_TYPE;
 exports.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE =
   ReactSharedInternals;
 exports.__COMPILER_RUNTIME = ReactCompilerRuntime;
 exports.act = function () {
   throw Error("act(...) is not supported in production builds of React.");
 };
+exports.addTransitionType = addTransitionType;
 exports.c = useMemoCache;
 exports.cache = function (fn) {
   return function () {
@@ -454,38 +446,23 @@ exports.cloneElement = function (element, config, children) {
       "The argument must be a React element, but you passed " + element + "."
     );
   var props = assign({}, element.props),
-    key = element.key,
-    owner = void 0;
-  if (null != config) {
-    void 0 !== config.ref && (owner = void 0);
-    void 0 !== config.key && (key = "" + config.key);
-    if (
-      !disableDefaultPropsExceptForClasses &&
-      element.type &&
-      element.type.defaultProps
-    )
-      var defaultProps = element.type.defaultProps;
-    for (propName in config)
+    key = element.key;
+  if (null != config)
+    for (propName in (void 0 !== config.key && (key = "" + config.key), config))
       !hasOwnProperty.call(config, propName) ||
         "key" === propName ||
         "__self" === propName ||
         "__source" === propName ||
         ("ref" === propName && void 0 === config.ref) ||
-        (props[propName] =
-          disableDefaultPropsExceptForClasses ||
-          void 0 !== config[propName] ||
-          void 0 === defaultProps
-            ? config[propName]
-            : defaultProps[propName]);
-  }
+        (props[propName] = config[propName]);
   var propName = arguments.length - 2;
   if (1 === propName) props.children = children;
   else if (1 < propName) {
-    defaultProps = Array(propName);
-    for (var i = 0; i < propName; i++) defaultProps[i] = arguments[i + 2];
-    props.children = defaultProps;
+    for (var childArray = Array(propName), i = 0; i < propName; i++)
+      childArray[i] = arguments[i + 2];
+    props.children = childArray;
   }
-  return ReactElement(element.type, key, void 0, void 0, owner, props);
+  return ReactElement(element.type, key, props);
 };
 exports.createContext = function (defaultValue) {
   defaultValue = {
@@ -525,14 +502,12 @@ exports.createElement = function (type, config, children) {
     for (propName in ((childrenLength = type.defaultProps), childrenLength))
       void 0 === props[propName] &&
         (props[propName] = childrenLength[propName]);
-  return ReactElement(type, key, void 0, void 0, null, props);
+  return ReactElement(type, key, props);
 };
 exports.createRef = function () {
   return { current: null };
 };
-exports.experimental_useEffectEvent = function (callback) {
-  return ReactSharedInternals.H.useEffectEvent(callback);
-};
+exports.experimental_useEffectEvent = useEffectEvent;
 exports.forwardRef = function (render) {
   return { $$typeof: REACT_FORWARD_REF_TYPE, render: render };
 };
@@ -589,6 +564,7 @@ exports.useDeferredValue = function (value, initialValue) {
 exports.useEffect = function (create, deps) {
   return ReactSharedInternals.H.useEffect(create, deps);
 };
+exports.useEffectEvent = useEffectEvent;
 exports.useId = function () {
   return ReactSharedInternals.H.useId();
 };
@@ -630,4 +606,4 @@ exports.useSyncExternalStore = function (
 exports.useTransition = function () {
   return ReactSharedInternals.H.useTransition();
 };
-exports.version = "19.2.0-www-modern-e1dc0349-20250617";
+exports.version = "19.3.0-www-modern-65eec428-20251218";
